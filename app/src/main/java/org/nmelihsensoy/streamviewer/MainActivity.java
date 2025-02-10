@@ -25,7 +25,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private native String nativeGetGStreamerInfo();
-    private native void nativePlayVideo(String videoPath);
+    //private native void nativePlayVideo(String videoPath);
 
     private ActivityMainBinding binding;
     private ExoPlayer player;
@@ -72,7 +72,8 @@ public class MainActivity extends AppCompatActivity {
         // Play button
         btnPlay.setOnClickListener(v -> {
             player.play();
-            nativePlayVideo("file:///android_asset/Feed.mp4");
+            Log.d("myTag1", nativeGetGStreamerInfo());
+            //nativePlayVideo("file:///android_asset/Feed.mp4");
         });
 
         // Pause button
