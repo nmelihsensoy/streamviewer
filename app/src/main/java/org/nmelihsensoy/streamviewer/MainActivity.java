@@ -12,15 +12,20 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.Button;
+import android.widget.Toast;
 
+import org.freedesktop.gstreamer.GStreamer;
 import org.nmelihsensoy.streamviewer.databinding.ActivityMainBinding;
 
 public class MainActivity extends AppCompatActivity {
 
     static {
-        //System.loadLibrary("streamviewer");
+        System.loadLibrary("gstreamer_android");
         System.loadLibrary("streamviewer");
     }
+
+    private native String nativeGetGStreamerInfo();
+    private native void nativePlayVideo(String videoPath);
 
     private ActivityMainBinding binding;
     private ExoPlayer player;
@@ -30,8 +35,16 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        nativeGetGStreamerInfo();
         binding = ActivityMainBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+        try {
+            GStreamer.init(this);
+        } catch (Exception e) {
+            Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
 
         // Example of a call to a native method
         //TextView tv = binding.sampleText;
@@ -42,11 +55,11 @@ public class MainActivity extends AppCompatActivity {
         player = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(player);
 
-        Uri hlsUri = Uri.parse("http://content.jwplatform.com/manifests/vM7nH0Kl.m3u8");
-        MediaItem mediaItem = MediaItem.fromUri(hlsUri);
+        //Uri hlsUri = Uri.parse("http://content.jwplatform.com/manifests/vM7nH0Kl.m3u8");
+        //MediaItem mediaItem = MediaItem.fromUri(hlsUri);
 
         // Set the media item to be played
-        player.setMediaItem(mediaItem);
+        //player.setMediaItem(mediaItem);
         player.prepare();
 
 
@@ -57,7 +70,10 @@ public class MainActivity extends AppCompatActivity {
         //player.prepare();
 
         // Play button
-        btnPlay.setOnClickListener(v -> player.play());
+        btnPlay.setOnClickListener(v -> {
+            player.play();
+            nativePlayVideo("file:///android_asset/Feed.mp4");
+        });
 
         // Pause button
         btnPause.setOnClickListener(v -> player.pause());
@@ -71,6 +87,4 @@ public class MainActivity extends AppCompatActivity {
             player.release();
         }
     }
-
-    public native void stringFromJNI();
 }
