@@ -9,6 +9,9 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 static GstElement *pipeline = NULL;
+#define ARRAYSIZE(a) \
+  ((sizeof(a) / sizeof(*(a))) / \
+  static_cast<size_t>(!(sizeof(a) % sizeof(*(a)))))
 
 extern "C"
 JNIEXPORT jstring JNICALL
@@ -42,6 +45,40 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_nativeGetGStreamerTest1(JNIEnv *
         gst_object_unref (plugin);
     }
     g_list_free (list);
+
+    //GstRegistry *registry = gst_registry_get();
+
+    if (!registry) {
+        LOGE("Failed to get gstreamer registry");
+    }
+
+    char *omx_decode_element_list[] = {
+            "amcviddec-omxqcomvideodecoderh263",
+            "amcviddec-omxqcomvideodecoderavc",
+            "amcviddec-omxqcomvideodecoderhevc",
+            "amcviddec-omxqcomvideodecodermpeg2",
+            "amcviddec-omxqcomvideodecodermpeg4",
+            "amcviddec-omxqcomvideodecodervp8",
+            "amcviddec-omxqcomvideodecodervp9",
+            "amcvidenc-omxqcomvideoencoderavc",
+            "amcvidenc-omxqcomvideoencoderh263",
+            "amcvidenc-omxqcomvideoencoderhevc",
+            "amcvidenc-omxqcomvideoencodermpeg4",
+            "amcvidenc-omxqcomvideoencodervp8"
+    };
+
+    for (int i = 0; i < ARRAYSIZE(omx_decode_element_list); i++) {
+        GstPluginFeature *feature =
+                gst_registry_lookup_feature(registry, omx_decode_element_list[i]);
+        if (!feature) {
+            LOGE("Featuer does not exist: %s", omx_decode_element_list[i]);
+            continue;
+        }
+
+        gst_plugin_feature_set_rank(feature, GST_RANK_PRIMARY + 1);
+        gst_registry_add_feature(registry, feature);
+        gst_object_unref(feature);
+    }
 }
 extern "C"
 JNIEXPORT void JNICALL
@@ -53,7 +90,8 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_initMyPipeline(JNIEnv *env, jobj
     gst_init(NULL, NULL);
 
     // Create the pipeline
-    pipeline = gst_parse_launch("tcpclientsrc host=localhost port=5001 ! h264parse ! avdec_h264 ! glimagesink", &error);
+    pipeline = gst_parse_launch("tcpclientsrc host=10.0.2.100 port=5000 ! h264parse ! avdec_h264 ! glimagesink", &error);
+    //pipeline = gst_parse_launch("tcpclientsrc host=localhost port=5001 ! queue ! decodebin ! glimagesink", &error);
     //pipeline = gst_parse_launch("videotestsrc ! glimagesink", &error);
     if (!pipeline) {
         LOGE("Failed to create GStreamer pipeline: %s", error->message);
@@ -87,4 +125,12 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_stopMyPipeline(JNIEnv *env, jobj
         pipeline = NULL;
         LOGI("GStreamer pipeline stopped and cleaned up.");
     }
+}
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_freedesktop_gstreamer_GstAmcOnFrameAvailableListener_native_1onFrameAvailable(JNIEnv *env,
+                                                                                       jobject thiz,
+                                                                                       jlong context,
+                                                                                       jobject surface_texture) {
+    //
 }
