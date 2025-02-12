@@ -2,15 +2,15 @@ package org.nmelihsensoy.streamviewer;
 
 import androidx.annotation.OptIn;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.media3.common.MediaItem;
-import androidx.media3.common.Player;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 
-import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.Surface;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.widget.Button;
 import android.widget.Toast;
 
@@ -27,7 +27,10 @@ public class MainActivity extends AppCompatActivity {
     private native String nativeGetGStreamerInfo();
 
     private native void nativeGetGStreamerTest1();
+    private native void initMyPipeline(Surface surface);
+    private native void stopMyPipeline();
     //private native void nativePlayVideo(String videoPath);
+    private SurfaceView surfaceView;
 
     private ActivityMainBinding binding;
     private ExoPlayer player;
@@ -81,6 +84,26 @@ public class MainActivity extends AppCompatActivity {
 
         // Pause button
         btnPause.setOnClickListener(v -> player.pause());
+
+        surfaceView = binding.gstreamerSurface;
+        surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(SurfaceHolder holder) {
+                //gStreamerNative.initPipeline(holder.getSurface()); // Pass the Surface to JNI
+                initMyPipeline(holder.getSurface());
+            }
+
+            @Override
+            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+                // Handle resize if needed
+            }
+
+            @Override
+            public void surfaceDestroyed(SurfaceHolder holder) {
+                //gStreamerNative.stopPipeline();
+                stopMyPipeline();
+            }
+        });
     }
 
     @Override
@@ -90,5 +113,7 @@ public class MainActivity extends AppCompatActivity {
         if (player != null) {
             player.release();
         }
+        //gStreamerNative.stopPipeline();
+        stopMyPipeline();
     }
 }

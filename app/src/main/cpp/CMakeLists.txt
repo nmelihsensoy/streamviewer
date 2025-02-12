@@ -2,10 +2,7 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project("streamviewer")
 
-set(GSTREAMER_ROOT_ANDROID "/Users/melih/Projects/gstreamer-1.0-android-universal-1.24.12" CACHE PATH "GStreamer root folder")
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+set(GSTREAMER_ROOT_ANDROID "C:/Users/melih.sensoy/Downloads/gstreamer-1.0-android-universal-1.24.12-tar/gstreamer-1.0-android-universal-1.24.12")
 
 if ("${ANDROID_ABI}" STREQUAL "arm64-v8a")
     set(GST_ABI "arm64")
@@ -20,11 +17,6 @@ else()
 endif()
 
 set(GSTREAMER_ROOT "${GSTREAMER_ROOT_ANDROID}/${GST_ABI}")
-
-#SET(GST_LIBS gstreamer-1.0 gmodule-2.0 gobject-2.0 glib-2.0 iconv intl ffi)
-#SET(GST_PLUGINS_CORE_LIBS gstaudioresample gstaudiotestsrc gstaudioconvert)
-#SET(GST_PLUGINS_BASE gstautodetect gstallocators-1.0 orc-test-0.4 gstapp-1.0 gstaudio-1.0 gstfft-1.0 gstpbutils-1.0 gstriff-1.0 gstrtp-1.0 gstrtsp-1.0 gstsdp-1.0 gsttag-1.0 gstvideo-1.0 gstgl-1.0 orc-0.4 gstopensles OpenSLES gstaudio-1.0 gstbase-1.0)
-
 
 include_directories(
         ${GSTREAMER_ROOT}/include/gstreamer-1.0
@@ -135,6 +127,12 @@ SET(GST_PLUGINS_CORE_LIBS
         ${GSTREAMER_ROOT}/lib/libgstapp-1.0.a
         ${GSTREAMER_ROOT}/lib/libgstsctp-1.0.a
         ${GSTREAMER_ROOT}/lib/libgstnet-1.0.a
+
+        ${GSTREAMER_ROOT}/lib/libgstallocators-1.0.a
+        ${GSTREAMER_ROOT}/lib/libgstfft-1.0.a
+        ${GSTREAMER_ROOT}/lib/libgstpbutils-1.0.a
+        ${GSTREAMER_ROOT}/lib/libgstriff-1.0.a
+
 )
 
 SET(GST_PLUGINS_BASE
