@@ -7,6 +7,7 @@
 #include <thread>
 #include <gst/app/gstappsink.h>
 #include <fstream>
+#include <opencv2/opencv.hpp>
 
 #define LOG_TAG "GStreamer"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -33,7 +34,7 @@ JNIEnv *GetJniEnv() {
 
 void start_main_loop() {
     if (!main_loop) {
-        main_loop = g_main_loop_new(NULL, FALSE);
+        main_loop = g_main_loop_new(nullptr, FALSE);
         LOGI("GMainLoop created for bus messages.");
     }
     if (!g_main_loop_is_running(main_loop)) {
@@ -355,4 +356,9 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_saveFrame(JNIEnv *env, jobject t
 
     gst_buffer_unmap(buffer, &map);
     gst_sample_unref(sample);
+}
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_nmelihsensoy_streamviewer_MainActivity_nativeOpenCVInfo(JNIEnv *env, jclass clazz) {
+    LOGI("OpenCV Version: %s, Build Information: %s", CV_VERSION, cv::getVersionString().c_str());
 }

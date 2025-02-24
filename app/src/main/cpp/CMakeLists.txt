@@ -172,8 +172,12 @@ SET(GST_PLUGINS_BASE
         ${GSTREAMER_RUNTIME_ROOT}/lib/libpixman-1.so
 )
 
+include_directories(${OpenCV_DIR}/jni/include)
+add_library( lib_opencv SHARED IMPORTED )
+set_target_properties(lib_opencv PROPERTIES IMPORTED_LOCATION ${OpenCV_DIR}/libs/${ANDROID_ABI}/libopencv_java4.so)
+
 add_library(gstreamer_android SHARED gstreamer_android.c)
 target_link_libraries(gstreamer_android log android ${GST_LIBS} ${GST_PLUGINS_CORE_LIBS} ${GST_PLUGINS_BASE})
 
 add_library(${CMAKE_PROJECT_NAME} SHARED native-lib.cpp)
-target_link_libraries(${CMAKE_PROJECT_NAME} log android gstreamer_android)
+target_link_libraries(${CMAKE_PROJECT_NAME} log android gstreamer_android lib_opencv)

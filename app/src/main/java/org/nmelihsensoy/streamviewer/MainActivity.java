@@ -1,11 +1,11 @@
 package org.nmelihsensoy.streamviewer;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.animation.ValueAnimator;
-import android.content.pm.PackageManager;
+import android.annotation.SuppressLint;
 import android.graphics.Color;
-import android.graphics.PorterDuff;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
@@ -34,6 +34,7 @@ public class MainActivity extends AppCompatActivity {
     private static native void pausePipeline();
     private static native void playPipeline();
     public native void nativeInit(MainActivity app);
+    private static native void nativeOpenCVInfo();
     private native void saveFrame();
     private static final String TAG = "FrameDebug";
     private ValueAnimator stateTextAnimator;
@@ -75,29 +76,28 @@ public class MainActivity extends AppCompatActivity {
         surfaceView = binding.gstreamerSurface;
         surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
             @Override
-            public void surfaceCreated(SurfaceHolder holder) {
+            public void surfaceCreated(@NonNull SurfaceHolder holder) {
                 setSurface(holder.getSurface());
             }
 
             @Override
-            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+            public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
             }
 
             @Override
-            public void surfaceDestroyed(SurfaceHolder holder) {
+            public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
             }
         });
-        binding.btnTest.setOnClickListener(v -> { connectToStreamUi(); });
-        binding.btnConnect.setOnClickListener(v -> {
-            serverURLHandler.showServerUrlDialog(isUrlChanged -> {
-                if (isUrlChanged) {
-                    //connectToStreamUi();
-                    Log.i(TAG, "URL changed. ");
-                } else {
-                    Log.i(TAG, "URL unchanged or canceled");
-                }
-            });
-        });
+        assert binding.btnTest != null;
+        binding.btnTest.setOnClickListener(v -> connectToStreamUi());
+        binding.btnConnect.setOnClickListener(v -> serverURLHandler.showServerUrlDialog(isUrlChanged -> {
+            if (isUrlChanged) {
+                //connectToStreamUi();
+                Log.i(TAG, "URL changed. ");
+            } else {
+                Log.i(TAG, "URL unchanged or canceled");
+            }
+        }));
         binding.btnPhoto.setOnClickListener(v -> {
             saveFrame();
             Log.i(TAG, "onCreate: saveFrame called");
@@ -106,6 +106,7 @@ public class MainActivity extends AppCompatActivity {
 
         //connectToStreamUi();
         initStateTextAnimation();
+        nativeOpenCVInfo();
     }
 
     private void connectToStreamUi(){
@@ -113,9 +114,7 @@ public class MainActivity extends AppCompatActivity {
             if(serverURLHandler.isUrlSet()){
                 Uri serverUri = serverURLHandler.getServerUrl();
                 //setStateConnecting();
-                new Thread(() -> {
-                    connectToStream(serverUri.getHost(), serverUri.getPort());
-                }).start();
+                new Thread(() -> connectToStream(serverUri.getHost(), serverUri.getPort())).start();
             }
         } catch (Exception e) {
             Log.e("connectToStreamUi", "connectToStreamUi: "+e.getMessage());
@@ -132,6 +131,7 @@ public class MainActivity extends AppCompatActivity {
         playPipeline();
     }
 
+    @SuppressLint("SetTextI18n")
     private void playTestStream() {
         //String pipeline = "videotestsrc is-live=true ! videoscale ! video/x-raw,width=1920,height=1080 ! warptv ! queue ! glimagesink sync=false";
         String pipeline = "videotestsrc is-live=true ! videoscale ! video/x-raw,width=1920,height=1080 ! warptv ! tee name=t ! queue ! glimagesink sync=false t. ! queue ! appsink name=app-sink sync=false";
@@ -141,6 +141,8 @@ public class MainActivity extends AppCompatActivity {
         binding.connection.setText("TEST");
     }
 
+    @SuppressLint("SetTextI18n")
+    @SuppressWarnings("unused")
     public void stateUpdates(final String message) {
         Log.i("TAG", "GST State Update: " + message);
         switch (message) {
