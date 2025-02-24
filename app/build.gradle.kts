@@ -17,10 +17,30 @@ android {
 
         externalNativeBuild {
             cmake {
+                val gstDevelRoot: String = project.findProperty("gstAndroidDevelRoot") as String?
+                    ?: throw GradleException(
+                        "\"gstAndroidDevelRoot\" must be defined in your gradle.properties " +
+                                "in the top-level directory of the unpacked universal GStreamer Android binaries"
+                    )
+
+                val gstRuntimeRoot: String = project.findProperty("gstAndroidRuntimeRoot") as String?
+                    ?: throw GradleException(
+                        "\"gstAndroidRuntimeRoot\" must be defined in your gradle.properties " +
+                                "in the top-level directory of the unpacked universal GStreamer Android binaries"
+                    )
+
                 arguments(
-                    "-DANDROID_STL=c++_shared"
+                    "-DANDROID_STL=c++_shared",
+                    "-DGSTREAMER_DEVEL_ANDROID=$gstDevelRoot",
+                    "-DGSTREAMER_RUNTIME_ANDROID=$gstRuntimeRoot"
                 )
             }
+        }
+    }
+
+    sourceSets {
+        getByName("main") {
+            assets.srcDirs("src/main/assets")
         }
     }
 
@@ -53,16 +73,4 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
-    // Core Media3 ExoPlayer
-    implementation(libs.media3.exoplayer)
-
-    // Media3 UI for video playback controls (optional)
-    implementation(libs.media3.ui)
-
-    // Media3 session support (optional, for media session handling)
-    implementation(libs.media3.session)
-    implementation(libs.media3.exoplayer.hls)
-
-    // Media3 decoder extensions (optional, if you need AV1 or FFmpeg support)
-    //implementation(libs.media3.exoplayer.dash)
 }

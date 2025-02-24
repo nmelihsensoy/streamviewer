@@ -1,42 +1,80 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
+<RelativeLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:orientation="vertical"
-    tools:context=".MainActivity">
+    android:layout_height="match_parent">
 
-<androidx.media3.ui.PlayerView
-    android:id="@+id/player_view"
-    android:layout_width="match_parent"
-    android:layout_height="250dp"
-    android:layout_margin="16dp"
-    android:background="#000"
-    app:use_controller="true"
-    app:resize_mode="fit" />
+    <SurfaceView
+        android:id="@+id/gstreamer_surface"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
-<!-- Play Button -->
-<Button
-    android:id="@+id/btn_play"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:text="Play"
-    android:layout_gravity="center"
-    android:layout_marginTop="16dp"/>
+    <LinearLayout
+        android:id="@+id/top_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#20FFFFFF"
+        android:orientation="horizontal"
+        android:padding="10dp">
 
-<!-- Pause Button -->
-<Button
-    android:id="@+id/btn_pause"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:text="Pause"
-    android:layout_gravity="center"
-    android:layout_marginTop="8dp"/>
+        <TextView
+            android:layout_marginLeft="10dp"
+            android:id="@+id/connection"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:text="DIS"/>
 
-<SurfaceView
-    android:id="@+id/gstreamer_surface"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent" />
+    </LinearLayout>
 
-</LinearLayout>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:background="#80000000">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <ImageButton
+                android:id="@+id/btn_photo"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_menu_camera"
+                android:contentDescription="Take Photo" />
+
+        </LinearLayout>
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <ImageButton
+                android:id="@+id/btn_refresh"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/settings_ethernet_24px"
+                android:contentDescription="Connect" />
+
+            <ImageButton
+                android:id="@+id/btn_connect"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/settings_ethernet_24px"
+                android:contentDescription="Connect" />
+        </LinearLayout>
+    </LinearLayout>
+</RelativeLayout>

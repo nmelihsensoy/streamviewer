@@ -4,133 +4,325 @@
 #include <unistd.h>
 #include <gst/video/videooverlay.h>
 #include <android/native_window_jni.h>
+#include <thread>
+#include <gst/app/gstappsink.h>
+#include <fstream>
 
-#define LOG_TAG "GStreamer"  // Define a log tag
+#define LOG_TAG "GStreamer"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-static GstElement *pipeline = NULL;
-#define ARRAYSIZE(a) \
-  ((sizeof(a) / sizeof(*(a))) / \
-  static_cast<size_t>(!(sizeof(a) % sizeof(*(a)))))
+
+static GstElement *pipeline = nullptr;
+static ANativeWindow *native_window = nullptr;
+static GMainLoop *main_loop = nullptr;
+static GstElement *app_sink = nullptr;
+static std::thread main_loop_thread;
+static jobject global_app = nullptr;
+static JavaVM *java_vm;
+
+jint JNI_OnLoad(JavaVM *vm, void *) {
+    java_vm = vm;
+    return JNI_VERSION_1_6;
+}
+
+JNIEnv *GetJniEnv() {
+    JNIEnv *env;
+    jint result = java_vm->AttachCurrentThread(&env, nullptr);
+    return result == JNI_OK ? env : nullptr;
+}
+
+void start_main_loop() {
+    if (!main_loop) {
+        main_loop = g_main_loop_new(NULL, FALSE);
+        LOGI("GMainLoop created for bus messages.");
+    }
+    if (!g_main_loop_is_running(main_loop)) {
+        LOGI("Starting GMainLoop in a separate thread...");
+        main_loop_thread = std::thread([]() {
+            g_main_loop_run(main_loop);
+        });
+    }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_freedesktop_gstreamer_GStreamer_nativeInit(JNIEnv *env, jclass clazz, jobject context) {
+}
+
+void setWindow(){
+    GstElement *videosink = gst_bin_get_by_interface(GST_BIN(pipeline), GST_TYPE_VIDEO_OVERLAY);
+    if (videosink) {
+        g_object_set(videosink, "force-aspect-ratio", TRUE, NULL);
+        g_object_set(videosink, "sync", FALSE, NULL);
+        g_object_set(videosink, "max-lateness", 0, NULL);
+        g_object_set(videosink, "qos", TRUE, NULL);
+        gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(videosink), (guintptr) native_window);
+        gst_object_unref(videosink);
+    }
+}
+
+void setAppSink(){
+    app_sink = gst_bin_get_by_name(GST_BIN(pipeline), "app-sink");
+    if (app_sink) {
+        g_object_set(G_OBJECT(app_sink),
+                     "emit-signals", FALSE,
+                     "sync", FALSE,
+                     "max-buffers", 1,
+                     "drop", TRUE,
+                     NULL);
+        LOGI("AppSink element successfully configured.");
+        gst_object_unref(app_sink);
+    }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_nmelihsensoy_streamviewer_MainActivity_setSurface(JNIEnv *env, jclass clazz, jobject surface) {
+    if (native_window) {
+        ANativeWindow_release(native_window);
+        native_window = nullptr;
+    }
+
+    if (surface) {
+        native_window = ANativeWindow_fromSurface(env, surface);
+        LOGI("Surface set");
+
+        if (pipeline) {
+            setWindow();
+        }
+    } else {
+        LOGI("Surface cleared");
+    }
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_nmelihsensoy_streamviewer_MainActivity_nativeCleanup(JNIEnv *env, jclass clazz) {
+    LOGI("Quitting main loop...");
+    if (main_loop) {
+        g_main_loop_quit(main_loop);
+    }
+    if (main_loop_thread.joinable()) {
+        LOGI("Waiting for main loop thread to finish...");
+        main_loop_thread.join();
+    }
+    LOGI("Deleting GlobalRef for app object at %p", global_app);
+    if (global_app) {
+        env->DeleteGlobalRef(global_app);
+        global_app = nullptr;
+    }
+    if (pipeline) {
+        gst_element_set_state(pipeline, GST_STATE_NULL);
+        gst_object_unref(pipeline);
+        pipeline = nullptr;
+    }
+    if (main_loop) {
+        g_main_loop_unref(main_loop);
+        main_loop = nullptr;
+    }
+    if (native_window) {
+        ANativeWindow_release(native_window);
+        native_window = nullptr;
+    }
+    if (app_sink) {
+        gst_object_unref(app_sink);
+        app_sink = nullptr;
+    }
+    LOGI("GStreamer cleanup complete");
+}
+
+void callJavaMethod(const char *methodName, const char *signature, const char *message) {
+    JNIEnv *env = GetJniEnv();
+    if (env == nullptr) {
+        LOGE("Failed to get JNI environment");
+        return;
+    }
+
+    if (global_app == nullptr) {
+        LOGE("Global app reference is null");
+        return;
+    }
+
+    jclass appClass = env->GetObjectClass(global_app);
+    if (appClass == nullptr) {
+        LOGE("Failed to find app class");
+        return;
+    }
+
+    jmethodID methodId = env->GetMethodID(appClass, methodName, signature);
+    if (methodId == nullptr) {
+        LOGE("Failed to find method: %s", methodName);
+        return;
+    }
+
+    jstring jMessage = env->NewStringUTF(message);
+    if (jMessage == nullptr) {
+        LOGE("Failed to create Java string");
+        return;
+    }
+
+    env->CallVoidMethod(global_app, methodId, jMessage);
+
+    env->DeleteLocalRef(jMessage);
+    env->DeleteLocalRef(appClass);
+}
+
+void sendStateUpdate(const char *message) {
+    callJavaMethod("stateUpdates", "(Ljava/lang/String;)V", message);
+}
+
+static gboolean on_bus_message(GstBus *bus, GstMessage *msg, gpointer data) {
+    GError *err;
+    gchar *debug_info;
+    switch (GST_MESSAGE_TYPE(msg)) {
+        case GST_MESSAGE_ERROR:
+            gst_message_parse_error(msg, &err, &debug_info);
+            sendStateUpdate(err->message);
+            g_error_free(err);
+            g_free(debug_info);
+        break;
+        default:
+            sendStateUpdate("Unhandled message type");
+        break;
+    }
+    return true;
+}
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_nmelihsensoy_streamviewer_MainActivity_setPipeline(JNIEnv *env, jclass clazz, jstring pipelineDesc) {
+    if (pipeline) {
+        gst_element_set_state(pipeline, GST_STATE_NULL);
+        gst_object_unref(pipeline);
+        pipeline = nullptr;
+    }
+
+    const char *pipeline_str = env->GetStringUTFChars(pipelineDesc, nullptr);
+    if (!pipeline_str) {
+        LOGE("Failed to get pipeline string");
+        return;
+    }
+
+    pipeline = gst_parse_launch(pipeline_str, nullptr);
+    env->ReleaseStringUTFChars(pipelineDesc, pipeline_str);
+
+    if (!pipeline) {
+        LOGE("Failed to create pipeline");
+        return;
+    }
+
+    setWindow();
+    setAppSink();
+
+    GstBus *bus = gst_element_get_bus(pipeline);
+    gst_bus_add_watch(bus, on_bus_message, nullptr);
+    gst_object_unref(bus);
+}
 
 extern "C"
 JNIEXPORT jstring JNICALL
 Java_org_nmelihsensoy_streamviewer_MainActivity_nativeGetGStreamerInfo(JNIEnv *env, jobject thiz) {
-    char *version_utf8 = gst_version_string ();
-    return (*env).NewStringUTF(version_utf8);
+    char *version_utf8 = gst_version_string();
+    return env->NewStringUTF(version_utf8);
 }
+
 extern "C"
 JNIEXPORT void JNICALL
-Java_org_freedesktop_gstreamer_GStreamer_nativeInit(JNIEnv *env, jclass clazz, jobject context) {
-    gst_init(nullptr, nullptr);
-}
-extern "C"
-JNIEXPORT void JNICALL
-Java_org_nmelihsensoy_streamviewer_MainActivity_nativeGetGStreamerTest1(JNIEnv *env, jclass clazz, jobject context) {
-    gst_init(nullptr, nullptr);
-    //gst_element_factory_find("videotestsrc")
-
-    GstElementFactory *androidOpusFactory = gst_element_factory_find("amcauddec-omxgoogleopusdecoder");
-    if (androidOpusFactory == NULL) {
-        LOGI("androidmedia not found");
-    }
-
+Java_org_nmelihsensoy_streamviewer_MainActivity_gstListPlugins(JNIEnv *env, jclass clazz) {
+    //gst_init(nullptr, nullptr);
     GList *g;
     GstRegistry *registry = gst_registry_get();
-
-    GList *list = gst_registry_get_plugin_list (registry);
+    GList *list = gst_registry_get_plugin_list(registry);
     for (g = list; g; g = g->next) {
-        GstPlugin *plugin = GST_PLUGIN (g->data);
-        LOGI ("found Plugin %s", gst_plugin_get_name (plugin));
-        gst_object_unref (plugin);
+        GstPlugin *plugin = GST_PLUGIN(g->data);
+        LOGI("found Plugin %s", gst_plugin_get_name(plugin));
+        gst_object_unref(plugin);
     }
-    g_list_free (list);
+    g_list_free(list);
+}
 
-    //GstRegistry *registry = gst_registry_get();
-
-    if (!registry) {
-        LOGE("Failed to get gstreamer registry");
-    }
-
-    char *omx_decode_element_list[] = {
-            "amcviddec-omxqcomvideodecoderh263",
-            "amcviddec-omxqcomvideodecoderavc",
-            "amcviddec-omxqcomvideodecoderhevc",
-            "amcviddec-omxqcomvideodecodermpeg2",
-            "amcviddec-omxqcomvideodecodermpeg4",
-            "amcviddec-omxqcomvideodecodervp8",
-            "amcviddec-omxqcomvideodecodervp9",
-            "amcvidenc-omxqcomvideoencoderavc",
-            "amcvidenc-omxqcomvideoencoderh263",
-            "amcvidenc-omxqcomvideoencoderhevc",
-            "amcvidenc-omxqcomvideoencodermpeg4",
-            "amcvidenc-omxqcomvideoencodervp8"
-    };
-
-    for (int i = 0; i < ARRAYSIZE(omx_decode_element_list); i++) {
-        GstPluginFeature *feature =
-                gst_registry_lookup_feature(registry, omx_decode_element_list[i]);
-        if (!feature) {
-            LOGE("Featuer does not exist: %s", omx_decode_element_list[i]);
-            continue;
-        }
-
-        gst_plugin_feature_set_rank(feature, GST_RANK_PRIMARY + 1);
-        gst_registry_add_feature(registry, feature);
-        gst_object_unref(feature);
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_nmelihsensoy_streamviewer_MainActivity_pausePipeline(JNIEnv *env, jclass clazz) {
+    if(pipeline){
+        gst_element_set_state(pipeline, GST_STATE_PAUSED);
+        LOGI("Pipeline set paused");
     }
 }
 extern "C"
 JNIEXPORT void JNICALL
-Java_org_nmelihsensoy_streamviewer_MainActivity_initMyPipeline(JNIEnv *env, jobject thiz, jobject surface) {
-    GError *error = NULL;
-    ANativeWindow *native_window = ANativeWindow_fromSurface(env, surface);
+Java_org_nmelihsensoy_streamviewer_MainActivity_playPipeline(JNIEnv *env, jclass clazz) {
+    if(pipeline){
+        gst_element_set_state(pipeline, GST_STATE_PLAYING);
+        LOGI("Pipeline set and playing");
+    }
+}
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_nmelihsensoy_streamviewer_MainActivity_nativeInit(JNIEnv *env, jobject thiz, jobject context) {
+    gst_init(nullptr, nullptr);
+    LOGI("GStreamer initialized");
+    global_app = env->NewGlobalRef(context);
+    if (!global_app) {
+        LOGE("Failed to create global reference for application context");
+    } else {
+        LOGI("Successfully stored global application reference: %p", global_app);
+    }
+    start_main_loop();
+}
 
-    // Initialize GStreamer
-    gst_init(NULL, NULL);
-
-    // Create the pipeline
-    pipeline = gst_parse_launch("tcpclientsrc host=10.0.2.100 port=5000 ! h264parse ! avdec_h264 ! glimagesink", &error);
-    //pipeline = gst_parse_launch("tcpclientsrc host=localhost port=5001 ! queue ! decodebin ! glimagesink", &error);
-    //pipeline = gst_parse_launch("videotestsrc ! glimagesink", &error);
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_nmelihsensoy_streamviewer_MainActivity_saveFrame(JNIEnv *env, jobject thiz) {
     if (!pipeline) {
-        LOGE("Failed to create GStreamer pipeline: %s", error->message);
-        g_clear_error(&error);
+        LOGE("Pipeline is not initialized.");
         return;
     }
 
-    LOGI("GStreamer pipeline created successfully!");
-
-    // Get glimagesink and set the SurfaceView as output
-    GstElement *sink = gst_bin_get_by_interface(GST_BIN(pipeline), GST_TYPE_VIDEO_OVERLAY);
-    if (!sink) {
-        LOGE("glimagesink not found!");
+    if (!app_sink) {
+        LOGE("Failed to get appsink element.");
         return;
     }
 
-    LOGI("glimagesink found, setting native window...");
-    gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(sink), (guintptr) native_window);
-    gst_object_unref(sink);
-
-    // Start playing the pipeline
-    gst_element_set_state(pipeline, GST_STATE_PLAYING);
-    LOGI("GStreamer pipeline playing...");
-}
-extern "C"
-JNIEXPORT void JNICALL
-Java_org_nmelihsensoy_streamviewer_MainActivity_stopMyPipeline(JNIEnv *env, jobject thiz) {
-    if (pipeline) {
-        gst_element_set_state(pipeline, GST_STATE_NULL);
-        gst_object_unref(pipeline);
-        pipeline = NULL;
-        LOGI("GStreamer pipeline stopped and cleaned up.");
+    GstSample *sample = gst_app_sink_try_pull_sample(GST_APP_SINK(app_sink), 0);
+    if (!sample) {
+        LOGE("Failed to pull sample from appsink.");
+        return;
     }
-}
-extern "C"
-JNIEXPORT void JNICALL
-Java_org_freedesktop_gstreamer_GstAmcOnFrameAvailableListener_native_1onFrameAvailable(JNIEnv *env,
-                                                                                       jobject thiz,
-                                                                                       jlong context,
-                                                                                       jobject surface_texture) {
-    //
+
+    GstBuffer *buffer = gst_sample_get_buffer(sample);
+    if (!buffer) {
+        LOGE("Failed to get buffer from sample.");
+        gst_sample_unref(sample);
+        return;
+    }
+
+    GstMapInfo map;
+    if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
+        LOGE("Failed to map buffer.");
+        gst_sample_unref(sample);
+        return;
+    }
+
+    GstCaps *caps = gst_sample_get_caps(sample);
+    const gchar *format = gst_caps_to_string(caps);
+    LOGI("Frame format: %s", format);
+
+    const char *filePath = "/sdcard/Download/frame2.raw";
+    //const char *filePath = "/data/data/org.nmelihsensoy.streamviewer/files/frame1.raw";
+    //ffmpeg -f rawvideo -pixel_format yuv444p -video_size 1920x1080 -i frame1.raw -vf format=rgb24 frame1.png
+    //Tcp Frame format: video/x-raw, format=(string)Y444, width=(int)1920, height=(int)1080, interlace-mode=(string)progressive, pixel-aspect-ratio=(fraction)1/1, chroma-site=(string)mpeg2, colorimetry=(string)bt709, framerate=(fraction)30/1
+    //Testsrc Frame format: video/x-raw, format=(string)RGBx, width=(int)1920, height=(int)1080, framerate=(fraction)30/1, multiview-mode=(string)mono, pixel-aspect-ratio=(fraction)1/1, interlace-mode=(string)progressive
+    //"RGBx" sparse RGB packed into 32 bit, space last
+    //ffmpeg -f rawvideo -pixel_format rgb32 -video_size 1920x1080 -i frame2.raw -vf format=rgb32 frame2_ffmpeg3.png
+    std::ofstream outFile(filePath, std::ios::out | std::ios::binary);
+    if (outFile.is_open()) {
+        outFile.write(reinterpret_cast<const char*>(map.data), map.size);
+        LOGI("Frame saved to %s, size: %zu bytes", filePath, map.size);
+        outFile.close();
+    } else {
+        LOGE("Failed to open file for writing.");
+    }
+
+    gst_buffer_unmap(buffer, &map);
+    gst_sample_unref(sample);
 }
