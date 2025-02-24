@@ -8,6 +8,7 @@
 #include <gst/app/gstappsink.h>
 #include <fstream>
 #include <opencv2/opencv.hpp>
+#include "opencv2/dnn.hpp"
 
 #define LOG_TAG "GStreamer"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -360,5 +361,23 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_saveFrame(JNIEnv *env, jobject t
 extern "C"
 JNIEXPORT void JNICALL
 Java_org_nmelihsensoy_streamviewer_MainActivity_nativeOpenCVInfo(JNIEnv *env, jclass clazz) {
-    LOGI("OpenCV Version: %s, Build Information: %s", CV_VERSION, cv::getVersionString().c_str());
+    LOGI("OpenCV Version: %s, Version String: %s", CV_VERSION, cv::getVersionString().c_str());
+    std::string buildInfo = cv::getBuildInformation();
+    LOGI("OpenCV Build Information:\n%s", buildInfo.c_str());
+
+    try {
+        cv::Mat identity = cv::Mat::eye(3, 3, CV_32F);
+        if (!identity.empty()) {
+            LOGI("Core module test (Mat::eye): Success");
+        } else {
+            LOGE("Core module test (Mat::eye): Failed");
+        }
+
+        cv::Mat dummyImage = cv::Mat::zeros(100, 100, CV_8UC3);
+        cv::Mat blob = cv::dnn::blobFromImage(dummyImage);
+        if (!blob.empty()) {
+            LOGI("DNN module test (blobFromImage): Success");
+        } else {
+            LOGE("DNN module test (blobFromImage): Failed");
+        }
 }
