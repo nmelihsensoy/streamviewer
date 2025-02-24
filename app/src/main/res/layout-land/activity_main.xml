@@ -35,7 +35,7 @@
             android:layout_height="48dp"
             android:layout_marginTop="16dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_menu_today"
+            android:src="@drawable/baseline_airplay_24"
             android:contentDescription="Test Button" />
 
         <ImageButton
@@ -65,7 +65,7 @@
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_lock_idle_alarm"
+            android:src="@drawable/baseline_add_to_queue_24"
             android:contentDescription="Connect" />
 
         <ImageButton
@@ -76,15 +76,5 @@
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:src="@drawable/settings_ethernet_24px"
             android:contentDescription="Connect" />
-
-        <ImageButton
-            android:id="@+id/btn_reconnect"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_marginTop="16dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_lock_idle_alarm"
-            android:contentDescription="Connect" />
-
     </LinearLayout>
 </RelativeLayout>

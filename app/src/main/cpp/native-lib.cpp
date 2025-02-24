@@ -174,15 +174,50 @@ void sendStateUpdate(const char *message) {
 static gboolean on_bus_message(GstBus *bus, GstMessage *msg, gpointer data) {
     GError *err;
     gchar *debug_info;
+    const GstStructure *s = NULL;
     switch (GST_MESSAGE_TYPE(msg)) {
         case GST_MESSAGE_ERROR:
             gst_message_parse_error(msg, &err, &debug_info);
-            sendStateUpdate(err->message);
+            sendStateUpdate("error");
             g_error_free(err);
             g_free(debug_info);
         break;
+
+        case GST_MESSAGE_STATE_CHANGED:
+            if (GST_MESSAGE_SRC(msg) == GST_OBJECT(pipeline)) {
+                GstState old_state, new_state, pending_state;
+                gst_message_parse_state_changed(msg, &old_state, &new_state, &pending_state);
+
+                if (new_state == GST_STATE_PAUSED) {
+                    sendStateUpdate("connecting");
+                } else if (new_state == GST_STATE_PLAYING) {
+                    sendStateUpdate("playing");
+                }
+            }
+            break;
+
+
+        case GST_MESSAGE_ELEMENT:
+            // Check for a network-status message.
+            s = gst_message_get_structure(msg);
+            if (gst_structure_has_name(s, "network-status")) {
+                const gchar *status = gst_structure_get_string(s, "status");
+                if (status) {
+                    if (g_strcmp0(status, "connecting") == 0) {
+                        sendStateUpdate("Attempting to connect to network resource.");
+                    } else if (g_strcmp0(status, "connected") == 0) {
+                        sendStateUpdate("Network resource connected.");
+                    } else if (g_strcmp0(status, "disconnected") == 0) {
+                        sendStateUpdate("Network resource disconnected unexpectedly.");
+                    }
+                }
+            }
+            break;
+
         default:
-            sendStateUpdate("Unhandled message type");
+            const gchar *msg_type_name = gst_message_type_get_name(GST_MESSAGE_TYPE(msg));
+            //g_print("Message type: %s\n", msg_type_name);
+            sendStateUpdate(msg_type_name);
         break;
     }
     return true;
@@ -309,11 +344,6 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_saveFrame(JNIEnv *env, jobject t
 
     const char *filePath = "/sdcard/Download/frame2.raw";
     //const char *filePath = "/data/data/org.nmelihsensoy.streamviewer/files/frame1.raw";
-    //ffmpeg -f rawvideo -pixel_format yuv444p -video_size 1920x1080 -i frame1.raw -vf format=rgb24 frame1.png
-    //Tcp Frame format: video/x-raw, format=(string)Y444, width=(int)1920, height=(int)1080, interlace-mode=(string)progressive, pixel-aspect-ratio=(fraction)1/1, chroma-site=(string)mpeg2, colorimetry=(string)bt709, framerate=(fraction)30/1
-    //Testsrc Frame format: video/x-raw, format=(string)RGBx, width=(int)1920, height=(int)1080, framerate=(fraction)30/1, multiview-mode=(string)mono, pixel-aspect-ratio=(fraction)1/1, interlace-mode=(string)progressive
-    //"RGBx" sparse RGB packed into 32 bit, space last
-    //ffmpeg -f rawvideo -pixel_format rgb32 -video_size 1920x1080 -i frame2.raw -vf format=rgb32 frame2_ffmpeg3.png
     std::ofstream outFile(filePath, std::ios::out | std::ios::binary);
     if (outFile.is_open()) {
         outFile.write(reinterpret_cast<const char*>(map.data), map.size);

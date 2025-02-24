@@ -1,12 +1,11 @@
 package org.nmelihsensoy.streamviewer;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 
 import android.animation.ValueAnimator;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.PorterDuff;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
@@ -92,7 +91,7 @@ public class MainActivity extends AppCompatActivity {
         binding.btnConnect.setOnClickListener(v -> {
             serverURLHandler.showServerUrlDialog(isUrlChanged -> {
                 if (isUrlChanged) {
-                    connectToStreamUi();
+                    //connectToStreamUi();
                     Log.i(TAG, "URL changed. ");
                 } else {
                     Log.i(TAG, "URL unchanged or canceled");
@@ -104,16 +103,16 @@ public class MainActivity extends AppCompatActivity {
             Log.i(TAG, "onCreate: saveFrame called");
         });
         binding.btnRefresh.setOnClickListener(v -> playTestStream());
-        binding.btnReconnect.setOnClickListener(v -> connectToStreamUi());
 
         //connectToStreamUi();
+        initStateTextAnimation();
     }
 
     private void connectToStreamUi(){
         try {
             if(serverURLHandler.isUrlSet()){
                 Uri serverUri = serverURLHandler.getServerUrl();
-                setStateConnecting();
+                //setStateConnecting();
                 new Thread(() -> {
                     connectToStream(serverUri.getHost(), serverUri.getPort());
                 }).start();
@@ -144,10 +143,38 @@ public class MainActivity extends AppCompatActivity {
 
     public void stateUpdates(final String message) {
         Log.i("TAG", "GST State Update: " + message);
+        switch (message) {
+            case "connecting":
+                System.out.println("Connecting to network resource...");
+                runOnUiThread(() -> {
+                    binding.connection.setText(".");
+                    stateTextAnimator.start();
+                });
+                break;
+            case "playing":
+                System.out.println("Playback started (Playing).");
+                runOnUiThread(() -> {
+                    stopStateAnimation();
+                    binding.connection.setText("LIVE");
+                });
+                break;
+            case "error":
+                System.out.println("Playback error");
+                runOnUiThread(() -> {
+                    stopStateAnimation();
+                    binding.connection.setText("ERR");
+                    surfaceView.getHolder().getSurface().release();
+                });
+                break;
+            default:
+                // Handle other state updates.
+                System.out.println("State update received: " + message);
+                break;
+        }
         //runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_SHORT).show());
     }
 
-    private void setStateConnecting(){
+    private void initStateTextAnimation(){
         stateTextAnimator = ValueAnimator.ofInt(0, 5);
         stateTextAnimator.setDuration(2000);
         stateTextAnimator.setRepeatCount(ValueAnimator.INFINITE);
@@ -157,8 +184,6 @@ public class MainActivity extends AppCompatActivity {
             int dotCount = (int) stateTextAnimator.getAnimatedValue();
             binding.connection.setText(".".repeat(dotCount));
         });
-
-        stateTextAnimator.start();
     }
 
     public void stopStateAnimation() {
