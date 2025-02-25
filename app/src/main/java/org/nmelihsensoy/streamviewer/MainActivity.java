@@ -35,7 +35,9 @@ public class MainActivity extends AppCompatActivity {
     private static native void playPipeline();
     public native void nativeInit(MainActivity app);
     private static native void nativeOpenCVInfo();
-    private native void saveFrame();
+    private native void saveRawFrame();
+    private native void savePngFrame();
+    private native void runFrameInference();
     private static final String TAG = "FrameDebug";
     private ValueAnimator stateTextAnimator;
 
@@ -43,6 +45,7 @@ public class MainActivity extends AppCompatActivity {
 
     private ActivityMainBinding binding;
     private ServerURLHandler serverURLHandler;
+    private String modelAssetPath = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -99,7 +102,8 @@ public class MainActivity extends AppCompatActivity {
             }
         }));
         binding.btnPhoto.setOnClickListener(v -> {
-            saveFrame();
+            //savePngFrame();
+            runFrameInference();
             Log.i(TAG, "onCreate: saveFrame called");
         });
         binding.btnRefresh.setOnClickListener(v -> playTestStream());
@@ -107,6 +111,12 @@ public class MainActivity extends AppCompatActivity {
         //connectToStreamUi();
         initStateTextAnimation();
         nativeOpenCVInfo();
+        modelAssetPath = ModelHelper.copyModelFile(this, "yolov5su.onnx");
+        Log.i(TAG, "onCreate: modelAssetPath: "+modelAssetPath);
+    }
+
+    public String getOnnxModelPath(){
+        return modelAssetPath;
     }
 
     private void connectToStreamUi(){
@@ -134,7 +144,8 @@ public class MainActivity extends AppCompatActivity {
     @SuppressLint("SetTextI18n")
     private void playTestStream() {
         //String pipeline = "videotestsrc is-live=true ! videoscale ! video/x-raw,width=1920,height=1080 ! warptv ! queue ! glimagesink sync=false";
-        String pipeline = "videotestsrc is-live=true ! videoscale ! video/x-raw,width=1920,height=1080 ! warptv ! tee name=t ! queue ! glimagesink sync=false t. ! queue ! appsink name=app-sink sync=false";
+        //String pipeline = "videotestsrc is-live=true ! videoscale ! video/x-raw,width=2960,height=1848 ! warptv ! tee name=t ! queue ! glimagesink sync=false t. ! queue ! appsink name=app-sink sync=false";
+        String pipeline = "videotestsrc is-live=true ! videoscale ! video/x-raw,width=2960,height=1848 ! clockoverlay time-format=\"%H:%M:%S\" font-desc=\"Sans, 48\" ! tee name=t ! queue ! glimagesink sync=false t. ! queue ! appsink name=app-sink sync=false";
         setPipeline(pipeline);
         playPipeline();
         stopStateAnimation();

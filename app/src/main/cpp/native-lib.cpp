@@ -307,9 +307,55 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_nativeInit(JNIEnv *env, jobject 
     start_main_loop();
 }
 
+std::string callJavaGetOnnxModelPath() {
+    JNIEnv* env = GetJniEnv();
+    if (env == nullptr) {
+        LOGE("Failed to get JNI environment");
+        return "";
+    }
+    if (global_app == nullptr) {
+        LOGE("Global app reference is null");
+        return "";
+    }
+
+    // Get the class of the global app object.
+    jclass appClass = env->GetObjectClass(global_app);
+    if (appClass == nullptr) {
+        LOGE("Failed to find app class");
+        return "";
+    }
+
+    // Get the method ID for getOnnxModelPath: "()Ljava/lang/String;"
+    jmethodID methodId = env->GetMethodID(appClass, "getOnnxModelPath", "()Ljava/lang/String;");
+    if (methodId == nullptr) {
+        LOGE("Failed to find getOnnxModelPath method");
+        env->DeleteLocalRef(appClass);
+        return "";
+    }
+
+    // Call the method.
+    jstring jModelPath = (jstring)env->CallObjectMethod(global_app, methodId);
+    if (jModelPath == nullptr) {
+        LOGE("getOnnxModelPath returned null");
+        env->DeleteLocalRef(appClass);
+        return "";
+    }
+
+    // Convert the jstring to a C++ std::string.
+    const char* cStr = env->GetStringUTFChars(jModelPath, nullptr);
+    std::string modelPath(cStr);
+    env->ReleaseStringUTFChars(jModelPath, cStr);
+
+    // Clean up local references.
+    env->DeleteLocalRef(jModelPath);
+    env->DeleteLocalRef(appClass);
+
+    return modelPath;
+}
+
 extern "C"
 JNIEXPORT void JNICALL
-Java_org_nmelihsensoy_streamviewer_MainActivity_saveFrame(JNIEnv *env, jobject thiz) {
+Java_org_nmelihsensoy_streamviewer_MainActivity_saveRawFrame(JNIEnv *env, jobject thiz) {
     if (!pipeline) {
         LOGE("Pipeline is not initialized.");
         return;
@@ -360,6 +406,302 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_saveFrame(JNIEnv *env, jobject t
 }
 extern "C"
 JNIEXPORT void JNICALL
+Java_org_nmelihsensoy_streamviewer_MainActivity_savePngFrame(JNIEnv *env, jobject thiz) {
+    if (!pipeline) {
+        LOGE("Pipeline is not initialized.");
+        return;
+    }
+
+    if (!app_sink) {
+        LOGE("Failed to get appsink element.");
+        return;
+    }
+
+    // Pull a sample from the appsink
+    GstSample *sample = gst_app_sink_try_pull_sample(GST_APP_SINK(app_sink), 0);
+    if (!sample) {
+        LOGE("Failed to pull sample from appsink.");
+        return;
+    }
+
+    GstBuffer *buffer = gst_sample_get_buffer(sample);
+    if (!buffer) {
+        LOGE("Failed to get buffer from sample.");
+        gst_sample_unref(sample);
+        return;
+    }
+
+    // Map the buffer to access its memory
+    GstMapInfo map;
+    if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
+        LOGE("Failed to map buffer.");
+        gst_sample_unref(sample);
+        return;
+    }
+
+    // Retrieve the caps from the sample and get video info
+    GstCaps *caps = gst_sample_get_caps(sample);
+    if (!caps) {
+        LOGE("Failed to get caps from sample.");
+        gst_buffer_unmap(buffer, &map);
+        gst_sample_unref(sample);
+        return;
+    }
+
+    GstVideoInfo vinfo;
+    if (!gst_video_info_from_caps(&vinfo, caps)) {
+        LOGE("Failed to parse video info from caps.");
+        gst_buffer_unmap(buffer, &map);
+        gst_sample_unref(sample);
+        return;
+    }
+
+    int width = GST_VIDEO_INFO_WIDTH(&vinfo);
+    int height = GST_VIDEO_INFO_HEIGHT(&vinfo);
+    GstVideoFormat gst_format = GST_VIDEO_INFO_FORMAT(&vinfo);
+    const gchar *format = gst_caps_to_string(caps);
+    LOGI("Frame format: %s", format);
+
+    // Determine the OpenCV type and whether a color conversion is needed.
+    cv::Mat frame;
+    bool needsConversion = false;
+    int conversionCode = 0;
+
+    switch (gst_format) {
+        case GST_VIDEO_FORMAT_BGR:
+            // Data is already in BGR format (CV_8UC3)
+            frame = cv::Mat(height, width, CV_8UC3, map.data);
+            break;
+        case GST_VIDEO_FORMAT_RGB:
+            // Data is in RGB; convert to BGR for OpenCV
+            frame = cv::Mat(height, width, CV_8UC3, map.data);
+            needsConversion = true;
+            conversionCode = cv::COLOR_RGB2BGR;
+            break;
+        case GST_VIDEO_FORMAT_BGRA:
+            // Data is in BGRA; remove alpha channel (convert to BGR)
+            frame = cv::Mat(height, width, CV_8UC4, map.data);
+            needsConversion = true;
+            conversionCode = cv::COLOR_BGRA2BGR;
+            break;
+        case GST_VIDEO_FORMAT_RGBA:
+            // Data is in RGBA; convert to BGR
+            frame = cv::Mat(height, width, CV_8UC4, map.data);
+            needsConversion = true;
+            conversionCode = cv::COLOR_RGBA2BGR;
+            break;
+        case GST_VIDEO_FORMAT_I420:
+            frame = cv::Mat(height, width, CV_8UC4, map.data);
+            needsConversion = true;
+            conversionCode = cv::COLOR_YUV2BGR_I420;
+            break;
+        case GST_VIDEO_FORMAT_RGBx:
+            frame = cv::Mat(height, width, CV_8UC4, map.data);
+            needsConversion = true;
+            conversionCode = cv::COLOR_RGBA2BGR;
+            break;
+        case GST_VIDEO_FORMAT_NV12:
+            frame = cv::Mat(height + height / 2, width, CV_8UC1, map.data);
+            //cv::Mat NV12 = cv::Mat(height * 3/2, Width, CV_8UC1, nv12Buffer);
+            needsConversion = true;
+            conversionCode = cv::COLOR_YUV2BGR_NV12;
+            break;
+
+        default:
+            LOGE("Unsupported video format.");
+            const gchar *format_str = gst_video_format_to_string(gst_format);
+            LOGI("%s", format_str);
+            gst_buffer_unmap(buffer, &map);
+            gst_sample_unref(sample);
+            return;
+    }
+
+    // If needed, convert the color format to BGR (OpenCV default)
+    if (needsConversion) {
+        cv::Mat converted;
+        cv::cvtColor(frame, converted, conversionCode);
+        frame = converted;
+    }
+
+    // Save the frame as a PNG image using OpenCV's imwrite
+    const char *filePath = "/sdcard/Download/frame.png";
+    if (cv::imwrite(filePath, frame)) {
+        LOGI("Frame saved to %s, size: %zu bytes (raw buffer size: %zu)", filePath, frame.total() * frame.elemSize(), map.size);
+    } else {
+        LOGE("Failed to write PNG image to file.");
+    }
+
+    // Cleanup: unmap the buffer and unref the sample
+    gst_buffer_unmap(buffer, &map);
+    gst_sample_unref(sample);
+}
+
+void printMatShape(const cv::Mat &mat) {
+    LOGI("Rows: %d, Cols: %d, Channels: %d", mat.rows, mat.cols, mat.channels());
+    std::ostringstream oss;
+    oss << "[";
+    for (int i = 0; i < mat.dims; i++) {
+        oss << mat.size[i];
+        if (i < mat.dims - 1) {
+            oss << ", ";
+        }
+    }
+    oss << "]";
+    LOGI("Output shape: %s", oss.str().c_str());
+    LOGI("Type: %d", mat.type());
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_nmelihsensoy_streamviewer_MainActivity_runFrameInference(JNIEnv *env, jobject thiz) {
+    if (!pipeline) {
+        LOGE("Pipeline is not initialized.");
+        return;
+    }
+
+    if (!app_sink) {
+        LOGE("Failed to get appsink element.");
+        return;
+    }
+
+    // Pull a sample from the appsink
+    GstSample *sample = gst_app_sink_try_pull_sample(GST_APP_SINK(app_sink), 0);
+    if (!sample) {
+        LOGE("Failed to pull sample from appsink.");
+        return;
+    }
+
+    GstBuffer *buffer = gst_sample_get_buffer(sample);
+    if (!buffer) {
+        LOGE("Failed to get buffer from sample.");
+        gst_sample_unref(sample);
+        return;
+    }
+
+    // Map the buffer to access its memory
+    GstMapInfo map;
+    if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
+        LOGE("Failed to map buffer.");
+        gst_sample_unref(sample);
+        return;
+    }
+
+    // Retrieve the caps from the sample and get video info
+    GstCaps *caps = gst_sample_get_caps(sample);
+    if (!caps) {
+        LOGE("Failed to get caps from sample.");
+        gst_buffer_unmap(buffer, &map);
+        gst_sample_unref(sample);
+        return;
+    }
+
+    GstVideoInfo vinfo;
+    if (!gst_video_info_from_caps(&vinfo, caps)) {
+        LOGE("Failed to parse video info from caps.");
+        gst_buffer_unmap(buffer, &map);
+        gst_sample_unref(sample);
+        return;
+    }
+
+    int width = GST_VIDEO_INFO_WIDTH(&vinfo);
+    int height = GST_VIDEO_INFO_HEIGHT(&vinfo);
+    GstVideoFormat gst_format = GST_VIDEO_INFO_FORMAT(&vinfo);
+    const gchar *format = gst_caps_to_string(caps);
+    LOGI("Frame format: %s", format);
+
+    // Determine the OpenCV type and whether a color conversion is needed.
+    cv::Mat frame;
+    bool needsConversion = false;
+    int conversionCode = 0;
+
+    switch (gst_format) {
+        case GST_VIDEO_FORMAT_BGR:
+            // Data is already in BGR format (CV_8UC3)
+            frame = cv::Mat(height, width, CV_8UC3, map.data);
+            break;
+        case GST_VIDEO_FORMAT_RGB:
+            // Data is in RGB; convert to BGR for OpenCV
+            frame = cv::Mat(height, width, CV_8UC3, map.data);
+            needsConversion = true;
+            conversionCode = cv::COLOR_RGB2BGR;
+            break;
+        case GST_VIDEO_FORMAT_BGRA:
+            // Data is in BGRA; remove alpha channel (convert to BGR)
+            frame = cv::Mat(height, width, CV_8UC4, map.data);
+            needsConversion = true;
+            conversionCode = cv::COLOR_BGRA2BGR;
+            break;
+        case GST_VIDEO_FORMAT_RGBA:
+            // Data is in RGBA; convert to BGR
+            frame = cv::Mat(height, width, CV_8UC4, map.data);
+            needsConversion = true;
+            conversionCode = cv::COLOR_RGBA2BGR;
+            break;
+        case GST_VIDEO_FORMAT_I420:
+            frame = cv::Mat(height, width, CV_8UC4, map.data);
+            needsConversion = true;
+            conversionCode = cv::COLOR_YUV2BGR_I420;
+            break;
+        case GST_VIDEO_FORMAT_RGBx:
+            frame = cv::Mat(height, width, CV_8UC4, map.data);
+            needsConversion = true;
+            conversionCode = cv::COLOR_RGBA2BGR;
+            break;
+        case GST_VIDEO_FORMAT_NV12:
+            frame = cv::Mat(height + height / 2, width, CV_8UC1, map.data);
+            //cv::Mat NV12 = cv::Mat(height * 3/2, Width, CV_8UC1, nv12Buffer);
+            needsConversion = true;
+            conversionCode = cv::COLOR_YUV2BGR_NV12;
+            break;
+
+        default:
+            LOGE("Unsupported video format.");
+            const gchar *format_str = gst_video_format_to_string(gst_format);
+            LOGI("%s", format_str);
+            gst_buffer_unmap(buffer, &map);
+            gst_sample_unref(sample);
+            return;
+    }
+
+    if (needsConversion) {
+        cv::Mat converted;
+        cv::cvtColor(frame, converted, conversionCode);
+        frame = converted;
+    }
+
+    // Prepare a square image for inference
+    int length = std::max(height, width);
+    cv::Mat image = cv::Mat::zeros(length, length, CV_8UC3);
+    frame.copyTo(image(cv::Rect(0, 0, width, height)));
+    double scaleFactor = static_cast<double>(length) / 640.0;
+    cv::Mat blob = cv::dnn::blobFromImage(image, 1.0 / 255.0, cv::Size(640, 640),
+                                          cv::Scalar(), true, false);
+
+    std::string modelAssetsPath = callJavaGetOnnxModelPath();
+    LOGI("onnx model path: %s", modelAssetsPath.c_str());
+    cv::dnn::Net model = cv::dnn::readNetFromONNX(modelAssetsPath);
+    if (model.empty()) {
+        LOGE("Failed to load model");
+        return;
+    }
+    model.setInput(blob);
+    cv::Mat output = model.forward();
+    printMatShape(output); //Output shape: [1, 84, 8400] Rows: -1, Cols: -1, Channels: 1
+
+    cv::Mat reshaped = output.reshape(1, output.size[1]);
+    printMatShape(reshaped); //Output shape: [84, 8400] Rows: 84, Cols: 8400, Channels: 1
+
+    cv::Mat transposed;
+    cv::transpose(reshaped, transposed);
+    printMatShape(transposed); //Output shape: [8400, 84] Rows: 8400, Cols: 84, Channels: 1
+
+
+
+    gst_buffer_unmap(buffer, &map);
+    gst_sample_unref(sample);
+}
+extern "C"
+JNIEXPORT void JNICALL
 Java_org_nmelihsensoy_streamviewer_MainActivity_nativeOpenCVInfo(JNIEnv *env, jclass clazz) {
     LOGI("OpenCV Version: %s, Version String: %s", CV_VERSION, cv::getVersionString().c_str());
     std::string buildInfo = cv::getBuildInformation();
@@ -380,4 +722,7 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_nativeOpenCVInfo(JNIEnv *env, jc
         } else {
             LOGE("DNN module test (blobFromImage): Failed");
         }
+    } catch (const cv::Exception& e) {
+        LOGE("Exception during plugin tests: %s", e.what());
+    }
 }

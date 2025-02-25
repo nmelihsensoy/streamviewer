@@ -20,7 +20,7 @@ public class GStreamer {
     private static native void nativeInit(Context context) throws Exception;
 
     public static void init(Context context) throws Exception {
-        //copyFonts(context);
+        copyFonts(context);
         //copyCaCertificates(context);
         nativeInit(context);
     }
