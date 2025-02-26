@@ -29,18 +29,19 @@ android {
                                 "in the top-level directory of the unpacked universal GStreamer Android binaries"
                     )
 
+                val opencvAndroidSdkRoot: String = project.findProperty("opencvAndroidSdkRoot") as String?
+                    ?: throw GradleException(
+                        "\"opencvAndroidSdkRoot\" must be defined in your gradle.properties " +
+                                "in the /sdk/native directory of the unpacked OpenCV Android SDK zip"
+                    )
+
                 arguments(
                     "-DANDROID_STL=c++_shared",
                     "-DGSTREAMER_DEVEL_ANDROID=$gstDevelRoot",
-                    "-DGSTREAMER_RUNTIME_ANDROID=$gstRuntimeRoot"
+                    "-DGSTREAMER_RUNTIME_ANDROID=$gstRuntimeRoot",
+                    "-DOpenCV_DIR=$opencvAndroidSdkRoot"
                 )
             }
-        }
-    }
-
-    sourceSets {
-        getByName("main") {
-            assets.srcDirs("src/main/assets")
         }
     }
 
