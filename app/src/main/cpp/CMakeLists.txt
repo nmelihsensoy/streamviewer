@@ -94,6 +94,10 @@ SET(GST_LIBS
         ${GSTREAMER_RUNTIME_ROOT}/lib/gstreamer-1.0/libgstadder.so
         ${GSTREAMER_RUNTIME_ROOT}/lib/gstreamer-1.0/libgstgio.so
         ${GSTREAMER_RUNTIME_ROOT}/lib/gstreamer-1.0/libgstpango.so
+        ${GSTREAMER_RUNTIME_ROOT}/lib/gstreamer-1.0/libgstmpegtsmux.so
+        ${GSTREAMER_RUNTIME_ROOT}/lib/gstreamer-1.0/libgsthls.so
+        ${GSTREAMER_RUNTIME_ROOT}/lib/gstreamer-1.0/libgstadaptivedemux2.so
+        ${GSTREAMER_RUNTIME_ROOT}/lib/gstreamer-1.0/libgstmultifile.so
 )
 
 SET(GST_PLUGINS_CORE_LIBS
@@ -147,9 +151,11 @@ SET(GST_PLUGINS_CORE_LIBS
         ${GSTREAMER_RUNTIME_ROOT}/lib/libpango-1.0.so
         ${GSTREAMER_RUNTIME_ROOT}/lib/libpangocairo-1.0.so
         ${GSTREAMER_RUNTIME_ROOT}/lib/libpangoft2-1.0.so
+        ${GSTREAMER_RUNTIME_ROOT}/lib/libgstmpegts-1.0.so
+        ${GSTREAMER_RUNTIME_ROOT}/lib/libgstadaptivedemux-1.0.so
+        ${GSTREAMER_RUNTIME_ROOT}/lib/libgsturidownloader-1.0.so
         EGL GLESv2 OpenSLES
 )
-
 SET(GST_PLUGINS_BASE
         ${GSTREAMER_RUNTIME_ROOT}/lib/libgstbase-1.0.so
         ${GSTREAMER_RUNTIME_ROOT}/lib/libgstreamer-1.0.so
@@ -170,6 +176,7 @@ SET(GST_PLUGINS_BASE
         ${GSTREAMER_RUNTIME_ROOT}/lib/libharfbuzz-gobject.so
         ${GSTREAMER_RUNTIME_ROOT}/lib/libfontconfig.so
         ${GSTREAMER_RUNTIME_ROOT}/lib/libpixman-1.so
+        ${GSTREAMER_RUNTIME_ROOT}/lib/libxml2.so
 )
 
 include_directories(${OpenCV_DIR}/jni/include)

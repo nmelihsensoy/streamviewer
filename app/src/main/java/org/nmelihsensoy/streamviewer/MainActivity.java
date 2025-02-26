@@ -18,6 +18,7 @@ import android.widget.Toast;
 import org.freedesktop.gstreamer.GStreamer;
 import org.nmelihsensoy.streamviewer.databinding.ActivityMainBinding;
 
+import java.io.File;
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
@@ -40,12 +41,13 @@ public class MainActivity extends AppCompatActivity {
     private native void runFrameInference();
     private static final String TAG = "FrameDebug";
     private ValueAnimator stateTextAnimator;
-
     private SurfaceView surfaceView;
 
     private ActivityMainBinding binding;
     private ServerURLHandler serverURLHandler;
     private String modelAssetPath = "";
+    private static String hlsSegmentPath;
+    private static String hlsPlaylistPath;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -131,21 +133,53 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void initializeHLSPaths() {
+        if (hlsSegmentPath == null || hlsPlaylistPath == null) {
+            File cacheDir = new File(getCacheDir(), "hls");
+            if (!cacheDir.exists()) {
+                cacheDir.mkdirs();  // Ensure the directory exists
+            }
+
+            hlsSegmentPath = new File(cacheDir, "segment_%05d.ts").getAbsolutePath();
+            hlsPlaylistPath = new File(cacheDir, "playlist.m3u8").getAbsolutePath();
+        }
+
+        Log.i(TAG, "initializeHLSPaths: Playlist Path:"+hlsPlaylistPath);
+    }
+
     private void connectToStream(String host, int port) {
+        initializeHLSPaths();
         String pipeline = String.format(
                 Locale.US,
-                "tcpclientsrc host=%s port=%d ! queue ! decodebin ! tee name=t t. ! queue ! glimagesink sync=false t. ! queue ! appsink name=app-sink sync=false",
-                host, port
+                "tcpclientsrc host=%s port=%d ! queue ! decodebin ! tee name=t " +
+                        "t. ! queue ! glimagesink sync=false " +
+                        "t. ! queue ! appsink name=app-sink sync=false " +
+                        "t. ! queue ! x264enc bitrate=2048 speed-preset=ultrafast tune=zerolatency ! " +
+                        "h264parse ! mpegtsmux ! hlssink location=%s playlist-location=%s " +
+                        "target-duration=5 max-files=10",
+                host, port, hlsSegmentPath, hlsPlaylistPath
         );
+
         setPipeline(pipeline);
         playPipeline();
     }
 
     @SuppressLint("SetTextI18n")
     private void playTestStream() {
-        //String pipeline = "videotestsrc is-live=true ! videoscale ! video/x-raw,width=1920,height=1080 ! warptv ! queue ! glimagesink sync=false";
-        //String pipeline = "videotestsrc is-live=true ! videoscale ! video/x-raw,width=2960,height=1848 ! warptv ! tee name=t ! queue ! glimagesink sync=false t. ! queue ! appsink name=app-sink sync=false";
-        String pipeline = "videotestsrc is-live=true ! videoscale ! video/x-raw,width=2960,height=1848 ! clockoverlay time-format=\"%H:%M:%S\" font-desc=\"Sans, 48\" ! tee name=t ! queue ! glimagesink sync=false t. ! queue ! appsink name=app-sink sync=false";
+        initializeHLSPaths();
+
+        String pipeline = String.format(
+                Locale.US,
+                "videotestsrc is-live=true ! videoscale ! video/x-raw,width=2960,height=1848 ! " +
+                        "clockoverlay time-format=\"%%H:%%M:%%S\" font-desc=\"Sans, 48\" ! tee name=t " +
+                        "t. ! queue ! glimagesink sync=false " +
+                        "t. ! queue ! appsink name=app-sink sync=false " +
+                        "t. ! queue ! x264enc bitrate=2048 speed-preset=ultrafast tune=zerolatency ! " +
+                        "h264parse ! mpegtsmux ! hlssink location=%s playlist-location=%s " +
+                        "target-duration=5 max-files=10",
+                hlsSegmentPath, hlsPlaylistPath
+        );
+
         setPipeline(pipeline);
         playPipeline();
         stopStateAnimation();
