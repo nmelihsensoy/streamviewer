@@ -19,6 +19,7 @@ import org.freedesktop.gstreamer.GStreamer;
 import org.nmelihsensoy.streamviewer.databinding.ActivityMainBinding;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
@@ -162,6 +163,7 @@ public class MainActivity extends AppCompatActivity {
 
         setPipeline(pipeline);
         playPipeline();
+        serveHls();
     }
 
     @SuppressLint("SetTextI18n")
@@ -184,6 +186,16 @@ public class MainActivity extends AppCompatActivity {
         playPipeline();
         stopStateAnimation();
         binding.connection.setText("TEST");
+        serveHls();
+    }
+
+    private void serveHls(){
+        File hlsDir = new File(getCacheDir(), "hls");
+        try {
+            HlsServer server = new HlsServer(8181, hlsDir);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     @SuppressLint("SetTextI18n")

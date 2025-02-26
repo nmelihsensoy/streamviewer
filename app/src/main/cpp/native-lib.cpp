@@ -669,6 +669,13 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_runFrameInference(JNIEnv *env, j
         frame = converted;
     }
 
+    std::string filename = "/sdcard/Download/image_" + std::to_string(std::rand()) + ".png";
+    if (cv::imwrite(filename, frame)) {
+        LOGI("Image saved: %s", filename.c_str());
+    } else {
+        LOGE("Error: Could not save image!");
+    }
+
     // Prepare a square image for inference
     int length = std::max(height, width);
     cv::Mat image = cv::Mat::zeros(length, length, CV_8UC3);
@@ -694,8 +701,6 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_runFrameInference(JNIEnv *env, j
     cv::Mat transposed;
     cv::transpose(reshaped, transposed);
     printMatShape(transposed); //Output shape: [8400, 84] Rows: 8400, Cols: 84, Channels: 1
-
-
 
     gst_buffer_unmap(buffer, &map);
     gst_sample_unref(sample);
