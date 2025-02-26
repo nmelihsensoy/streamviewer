@@ -156,8 +156,8 @@ public class MainActivity extends AppCompatActivity {
                         "t. ! queue ! glimagesink sync=false " +
                         "t. ! queue ! appsink name=app-sink sync=false " +
                         "t. ! queue ! x264enc bitrate=2048 speed-preset=ultrafast tune=zerolatency ! " +
-                        "h264parse ! mpegtsmux ! hlssink location=%s playlist-location=%s " +
-                        "target-duration=5 max-files=10",
+                        "h264parse config-interval=1 ! hlssink2 location=%s playlist-location=%s " +
+                        "target-duration=1 max-files=10 playlist-length=3",
                 host, port, hlsSegmentPath, hlsPlaylistPath
         );
 
