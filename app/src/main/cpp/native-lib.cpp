@@ -1,16 +1,16 @@
 #include <jni.h>
-#include <android/log.h>
-#include <gst/gst.h>
 #include <unistd.h>
-#include <gst/video/videooverlay.h>
-#include <android/native_window_jni.h>
 #include <thread>
-#include <gst/app/gstappsink.h>
 #include <fstream>
+#include <android/log.h>
+#include <android/native_window_jni.h>
+#include <gst/gst.h>
+#include <gst/video/videooverlay.h>
+#include <gst/app/gstappsink.h>
 #include <opencv2/opencv.hpp>
-#include "opencv2/dnn.hpp"
+#include <opencv2/dnn.hpp>
 
-#define LOG_TAG "GStreamer"
+#define LOG_TAG "GStreamer JNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
@@ -72,7 +72,6 @@ void setAppSink(){
                      "max-buffers", 1,
                      "drop", TRUE,
                      NULL);
-        LOGI("AppSink element successfully configured.");
         gst_object_unref(app_sink);
     }
 }
@@ -105,10 +104,8 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_nativeCleanup(JNIEnv *env, jclas
         g_main_loop_quit(main_loop);
     }
     if (main_loop_thread.joinable()) {
-        LOGI("Waiting for main loop thread to finish...");
         main_loop_thread.join();
     }
-    LOGI("Deleting GlobalRef for app object at %p", global_app);
     if (global_app) {
         env->DeleteGlobalRef(global_app);
         global_app = nullptr;
@@ -197,29 +194,9 @@ static gboolean on_bus_message(GstBus *bus, GstMessage *msg, gpointer data) {
                 }
             }
             break;
-
-
-        case GST_MESSAGE_ELEMENT:
-            // Check for a network-status message.
-            s = gst_message_get_structure(msg);
-            if (gst_structure_has_name(s, "network-status")) {
-                const gchar *status = gst_structure_get_string(s, "status");
-                if (status) {
-                    if (g_strcmp0(status, "connecting") == 0) {
-                        sendStateUpdate("Attempting to connect to network resource.");
-                    } else if (g_strcmp0(status, "connected") == 0) {
-                        sendStateUpdate("Network resource connected.");
-                    } else if (g_strcmp0(status, "disconnected") == 0) {
-                        sendStateUpdate("Network resource disconnected unexpectedly.");
-                    }
-                }
-            }
-            break;
-
         default:
-            const gchar *msg_type_name = gst_message_type_get_name(GST_MESSAGE_TYPE(msg));
-            //g_print("Message type: %s\n", msg_type_name);
-            sendStateUpdate(msg_type_name);
+            //const gchar *msg_type_name = gst_message_type_get_name(GST_MESSAGE_TYPE(msg));
+            //sendStateUpdate(msg_type_name);
         break;
     }
     return true;
@@ -318,14 +295,12 @@ std::string callJavaGetOnnxModelPath() {
         return "";
     }
 
-    // Get the class of the global app object.
-    jclass appClass = env->GetObjectClass(global_app);
+    jclass appClass = env->GetObjectClass(global_app); //MainActivity
     if (appClass == nullptr) {
         LOGE("Failed to find app class");
         return "";
     }
 
-    // Get the method ID for getOnnxModelPath: "()Ljava/lang/String;"
     jmethodID methodId = env->GetMethodID(appClass, "getOnnxModelPath", "()Ljava/lang/String;");
     if (methodId == nullptr) {
         LOGE("Failed to find getOnnxModelPath method");
@@ -333,7 +308,6 @@ std::string callJavaGetOnnxModelPath() {
         return "";
     }
 
-    // Call the method.
     jstring jModelPath = (jstring)env->CallObjectMethod(global_app, methodId);
     if (jModelPath == nullptr) {
         LOGE("getOnnxModelPath returned null");
@@ -341,12 +315,10 @@ std::string callJavaGetOnnxModelPath() {
         return "";
     }
 
-    // Convert the jstring to a C++ std::string.
     const char* cStr = env->GetStringUTFChars(jModelPath, nullptr);
     std::string modelPath(cStr);
     env->ReleaseStringUTFChars(jModelPath, cStr);
 
-    // Clean up local references.
     env->DeleteLocalRef(jModelPath);
     env->DeleteLocalRef(appClass);
 
@@ -390,148 +362,16 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_saveRawFrame(JNIEnv *env, jobjec
     const gchar *format = gst_caps_to_string(caps);
     LOGI("Frame format: %s", format);
 
-    const char *filePath = "/sdcard/Download/frame2.raw";
-    //const char *filePath = "/data/data/org.nmelihsensoy.streamviewer/files/frame1.raw";
-    std::ofstream outFile(filePath, std::ios::out | std::ios::binary);
+    std::string filename = "/sdcard/Download/frame_" + std::to_string(std::rand()) + ".raw";
+    std::ofstream outFile(filename, std::ios::out | std::ios::binary);
     if (outFile.is_open()) {
         outFile.write(reinterpret_cast<const char*>(map.data), map.size);
-        LOGI("Frame saved to %s, size: %zu bytes", filePath, map.size);
+        LOGI("Frame saved to %s, size: %zu bytes", filename.c_str(), map.size);
         outFile.close();
     } else {
         LOGE("Failed to open file for writing.");
     }
 
-    gst_buffer_unmap(buffer, &map);
-    gst_sample_unref(sample);
-}
-extern "C"
-JNIEXPORT void JNICALL
-Java_org_nmelihsensoy_streamviewer_MainActivity_savePngFrame(JNIEnv *env, jobject thiz) {
-    if (!pipeline) {
-        LOGE("Pipeline is not initialized.");
-        return;
-    }
-
-    if (!app_sink) {
-        LOGE("Failed to get appsink element.");
-        return;
-    }
-
-    // Pull a sample from the appsink
-    GstSample *sample = gst_app_sink_try_pull_sample(GST_APP_SINK(app_sink), 0);
-    if (!sample) {
-        LOGE("Failed to pull sample from appsink.");
-        return;
-    }
-
-    GstBuffer *buffer = gst_sample_get_buffer(sample);
-    if (!buffer) {
-        LOGE("Failed to get buffer from sample.");
-        gst_sample_unref(sample);
-        return;
-    }
-
-    // Map the buffer to access its memory
-    GstMapInfo map;
-    if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
-        LOGE("Failed to map buffer.");
-        gst_sample_unref(sample);
-        return;
-    }
-
-    // Retrieve the caps from the sample and get video info
-    GstCaps *caps = gst_sample_get_caps(sample);
-    if (!caps) {
-        LOGE("Failed to get caps from sample.");
-        gst_buffer_unmap(buffer, &map);
-        gst_sample_unref(sample);
-        return;
-    }
-
-    GstVideoInfo vinfo;
-    if (!gst_video_info_from_caps(&vinfo, caps)) {
-        LOGE("Failed to parse video info from caps.");
-        gst_buffer_unmap(buffer, &map);
-        gst_sample_unref(sample);
-        return;
-    }
-
-    int width = GST_VIDEO_INFO_WIDTH(&vinfo);
-    int height = GST_VIDEO_INFO_HEIGHT(&vinfo);
-    GstVideoFormat gst_format = GST_VIDEO_INFO_FORMAT(&vinfo);
-    const gchar *format = gst_caps_to_string(caps);
-    LOGI("Frame format: %s", format);
-
-    // Determine the OpenCV type and whether a color conversion is needed.
-    cv::Mat frame;
-    bool needsConversion = false;
-    int conversionCode = 0;
-
-    switch (gst_format) {
-        case GST_VIDEO_FORMAT_BGR:
-            // Data is already in BGR format (CV_8UC3)
-            frame = cv::Mat(height, width, CV_8UC3, map.data);
-            break;
-        case GST_VIDEO_FORMAT_RGB:
-            // Data is in RGB; convert to BGR for OpenCV
-            frame = cv::Mat(height, width, CV_8UC3, map.data);
-            needsConversion = true;
-            conversionCode = cv::COLOR_RGB2BGR;
-            break;
-        case GST_VIDEO_FORMAT_BGRA:
-            // Data is in BGRA; remove alpha channel (convert to BGR)
-            frame = cv::Mat(height, width, CV_8UC4, map.data);
-            needsConversion = true;
-            conversionCode = cv::COLOR_BGRA2BGR;
-            break;
-        case GST_VIDEO_FORMAT_RGBA:
-            // Data is in RGBA; convert to BGR
-            frame = cv::Mat(height, width, CV_8UC4, map.data);
-            needsConversion = true;
-            conversionCode = cv::COLOR_RGBA2BGR;
-            break;
-        case GST_VIDEO_FORMAT_I420:
-            frame = cv::Mat(height, width, CV_8UC4, map.data);
-            needsConversion = true;
-            conversionCode = cv::COLOR_YUV2BGR_I420;
-            break;
-        case GST_VIDEO_FORMAT_RGBx:
-            frame = cv::Mat(height, width, CV_8UC4, map.data);
-            needsConversion = true;
-            conversionCode = cv::COLOR_RGBA2BGR;
-            break;
-        case GST_VIDEO_FORMAT_NV12:
-            frame = cv::Mat(height + height / 2, width, CV_8UC1, map.data);
-            //cv::Mat NV12 = cv::Mat(height * 3/2, Width, CV_8UC1, nv12Buffer);
-            needsConversion = true;
-            conversionCode = cv::COLOR_YUV2BGR_NV12;
-            break;
-
-        default:
-            LOGE("Unsupported video format.");
-            const gchar *format_str = gst_video_format_to_string(gst_format);
-            LOGI("%s", format_str);
-            gst_buffer_unmap(buffer, &map);
-            gst_sample_unref(sample);
-            return;
-    }
-
-    // If needed, convert the color format to BGR (OpenCV default)
-    if (needsConversion) {
-        cv::Mat converted;
-        cv::cvtColor(frame, converted, conversionCode);
-        frame = converted;
-    }
-
-    // Save the frame as a PNG image using OpenCV's imwrite
-    const char *filePath = "/sdcard/Download/frame.png";
-    if (cv::imwrite(filePath, frame)) {
-        LOGI("Frame saved to %s, size: %zu bytes (raw buffer size: %zu)", filePath, frame.total() * frame.elemSize(), map.size);
-    } else {
-        LOGE("Failed to write PNG image to file.");
-    }
-
-    // Cleanup: unmap the buffer and unref the sample
     gst_buffer_unmap(buffer, &map);
     gst_sample_unref(sample);
 }
@@ -564,7 +404,6 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_runFrameInference(JNIEnv *env, j
         return;
     }
 
-    // Pull a sample from the appsink
     GstSample *sample = gst_app_sink_try_pull_sample(GST_APP_SINK(app_sink), 0);
     if (!sample) {
         LOGE("Failed to pull sample from appsink.");
@@ -578,7 +417,6 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_runFrameInference(JNIEnv *env, j
         return;
     }
 
-    // Map the buffer to access its memory
     GstMapInfo map;
     if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
         LOGE("Failed to map buffer.");
@@ -586,7 +424,6 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_runFrameInference(JNIEnv *env, j
         return;
     }
 
-    // Retrieve the caps from the sample and get video info
     GstCaps *caps = gst_sample_get_caps(sample);
     if (!caps) {
         LOGE("Failed to get caps from sample.");
@@ -609,30 +446,25 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_runFrameInference(JNIEnv *env, j
     const gchar *format = gst_caps_to_string(caps);
     LOGI("Frame format: %s", format);
 
-    // Determine the OpenCV type and whether a color conversion is needed.
     cv::Mat frame;
     bool needsConversion = false;
     int conversionCode = 0;
 
     switch (gst_format) {
         case GST_VIDEO_FORMAT_BGR:
-            // Data is already in BGR format (CV_8UC3)
             frame = cv::Mat(height, width, CV_8UC3, map.data);
             break;
         case GST_VIDEO_FORMAT_RGB:
-            // Data is in RGB; convert to BGR for OpenCV
             frame = cv::Mat(height, width, CV_8UC3, map.data);
             needsConversion = true;
             conversionCode = cv::COLOR_RGB2BGR;
             break;
         case GST_VIDEO_FORMAT_BGRA:
-            // Data is in BGRA; remove alpha channel (convert to BGR)
             frame = cv::Mat(height, width, CV_8UC4, map.data);
             needsConversion = true;
             conversionCode = cv::COLOR_BGRA2BGR;
             break;
         case GST_VIDEO_FORMAT_RGBA:
-            // Data is in RGBA; convert to BGR
             frame = cv::Mat(height, width, CV_8UC4, map.data);
             needsConversion = true;
             conversionCode = cv::COLOR_RGBA2BGR;
@@ -669,6 +501,13 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_runFrameInference(JNIEnv *env, j
         frame = converted;
     }
 
+    std::string filename = "/sdcard/Download/image_" + std::to_string(std::rand()) + ".png";
+    if (cv::imwrite(filename, frame)) {
+        LOGI("Image saved: %s", filename.c_str());
+    } else {
+        LOGE("Error: Could not save image!");
+    }
+
     // Prepare a square image for inference
     int length = std::max(height, width);
     cv::Mat image = cv::Mat::zeros(length, length, CV_8UC3);
@@ -694,8 +533,6 @@ Java_org_nmelihsensoy_streamviewer_MainActivity_runFrameInference(JNIEnv *env, j
     cv::Mat transposed;
     cv::transpose(reshaped, transposed);
     printMatShape(transposed); //Output shape: [8400, 84] Rows: 8400, Cols: 84, Channels: 1
-
-
 
     gst_buffer_unmap(buffer, &map);
     gst_sample_unref(sample);
