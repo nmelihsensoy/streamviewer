@@ -23,12 +23,6 @@ android {
                                 "in the top-level directory of the unpacked universal GStreamer Android binaries"
                     )
 
-                val gstRuntimeRoot: String = project.findProperty("gstAndroidRuntimeRoot") as String?
-                    ?: throw GradleException(
-                        "\"gstAndroidRuntimeRoot\" must be defined in your gradle.properties " +
-                                "in the top-level directory of the unpacked universal GStreamer Android binaries"
-                    )
-
                 val opencvAndroidSdkRoot: String = project.findProperty("opencvAndroidSdkRoot") as String?
                     ?: throw GradleException(
                         "\"opencvAndroidSdkRoot\" must be defined in your gradle.properties " +
@@ -38,7 +32,6 @@ android {
                 arguments(
                     "-DANDROID_STL=c++_shared",
                     "-DGSTREAMER_DEVEL_ANDROID=$gstDevelRoot",
-                    "-DGSTREAMER_RUNTIME_ANDROID=$gstRuntimeRoot",
                     "-DOpenCV_DIR=$opencvAndroidSdkRoot"
                 )
             }

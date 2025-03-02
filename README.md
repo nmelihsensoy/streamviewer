@@ -1,27 +1,25 @@
 # StreamViewer
 
-`gradle.properties`
-````
-gstAndroidDevelRoot=C\:\\Users\\melih.sensoy\\Desktop\\gstreamer-1.0-android-universal-1.25.1.1
-gstAndroidRuntimeRoot=C\:\\Users\\melih.sensoy\\gstreamer-1.0-android-universal-1.25.1.1-runtime.tar\\gstreamer-1.0-android-universal-1.25.1.1-runtime
-````
+StreamViewer is an Android application that allows users to view H.264 video streams over TCP using GStreamer.
 
-Test Tcp Stream:
-```
- gst-launch-1.0 -v videotestsrc ! clockoverlay time-format="%H:%M:%S" font-desc="Sans, 48" ! videoscale ! videoconvert ! video/x-raw,format=I420,width=2960,height=1848 ! x264enc tune=zerolatency bitrate=4000 speed-preset=superfast ! h264parse ! video/x-h264,stream-format=byte-stream ! tcpserversink host=0.0.0.0 port=5001
-```
+![Walkthrough](.//media/walkthrough1.png)
 
-Test Static Image Stream
-```
-gst-launch-1.0 -v filesrc location="<image_path>" ! decodebin ! imagefreeze ! clockoverlay time-format="%H:%M:%S" font-desc="Sans, 48" ! videoscale ! videoconvert ! video/x-raw,width=2960,height=1848 ! x264enc tune=zerolatency bitrate=4000 speed-preset=superfast ! h264parse ! video/x-h264,stream-format=byte-stream ! tcpserversink host=0.0.0.0 port=5001 
-```
+## Features
 
-Raw Frame Conversion:
-```
-For Frame format: video/x-raw, format=(string)Y444, width=(int)1920, height=(int)1080, interlace-mode=(string)progressive, pixel-aspect-ratio=(fraction)1/1, chroma-site=(string)mpeg2, colorimetry=(string)bt709, framerate=(fraction)30/1
-ffmpeg -f rawvideo -pixel_format yuv444p -video_size 1920x1080 -i frame.raw -vf format=rgb24 frame.png
+- **Connect to a Stream** – View stream from a TCP source.
+- **Capture Frame & Run Inference** – Take a snapshot and perform YOLO inference.
+- **Load a Test Stream** – Quickly launch a built-in test stream.
+- **HLS Restreaming** – Restream the current source as an HLS stream.
 
-For Frame format: video/x-raw, format=(string)RGBx, width=(int)1920, height=(int)1080, framerate=(fraction)30/1, multiview-mode=(string)mono, pixel-aspect-ratio=(fraction)1/1, interlace-mode=(string)progressive
-ffmpeg -f rawvideo -pixel_format rgb32 -video_size 1920x1080 -i frame.raw -vf format=rgb32 frame.png
-```
+### HLS Restreaming
 
+The restreamed HLS feed can be accessed via the following URL: `http://<server_ip>:8181/playlist.m3u8`
+
+### Configuration
+
+Update your `gradle.properties` file with the paths to GStreamer and OpenCV SDKs:
+
+```properties
+gstAndroidDevelRoot=D\:\\gstreamer-1.0-android-universal-1.25.90.1
+opencvAndroidSdkRoot=D\:\\opencv-4.11.0-android-sdk\\OpenCV-android-sdk\\sdk\\native
+```

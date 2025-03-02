@@ -8,6 +8,7 @@ import java.io.InputStream;
 import fi.iki.elonen.NanoHTTPD;
 
 public class HlsServer extends NanoHTTPD {
+    private static HlsServer instance;
     private final File hlsDirectory;
 
     public HlsServer(int port, File hlsDir) throws IOException {
@@ -15,6 +16,13 @@ public class HlsServer extends NanoHTTPD {
         this.hlsDirectory = hlsDir;
         start(SOCKET_READ_TIMEOUT, false);
         System.out.println("HLS Server running on http://localhost:" + port);
+    }
+
+    public static synchronized HlsServer getInstance(int port, File hlsDir) throws IOException {
+        if (instance == null) {
+            instance = new HlsServer(port, hlsDir);
+        }
+        return instance;
     }
 
     @Override

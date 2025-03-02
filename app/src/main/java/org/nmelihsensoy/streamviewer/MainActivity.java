@@ -4,7 +4,6 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.animation.ValueAnimator;
-import android.annotation.SuppressLint;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -21,55 +20,31 @@ import org.nmelihsensoy.streamviewer.databinding.ActivityMainBinding;
 import java.io.File;
 import java.io.IOException;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
-
-    static {
-        System.loadLibrary("gstreamer_android");
-        System.loadLibrary("streamviewer");
-    }
-    private native String nativeGetGStreamerInfo();
-    private static native void setSurface(Surface surface);
-    private static native void nativeCleanup();
-    private static native void gstListPlugins();
-    private static native void setPipeline(String pipelineDesc);
-    private static native void pausePipeline();
-    private static native void playPipeline();
-    public native void nativeInit(MainActivity app);
-    private static native void nativeOpenCVInfo();
-    private native void saveRawFrame();
-    private native void savePngFrame();
-    private native void runFrameInference();
-    private static final String TAG = "FrameDebug";
+    private static final String TAG = "MainActivity";
     private ValueAnimator stateTextAnimator;
     private SurfaceView surfaceView;
-
     private ActivityMainBinding binding;
     private ServerURLHandler serverURLHandler;
     private String modelAssetPath = "";
     private static String hlsSegmentPath;
     private static String hlsPlaylistPath;
+    private ExecutorService executor;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-        );
-
-        getWindow().setStatusBarColor(Color.TRANSPARENT);
-        getWindow().setNavigationBarColor(Color.TRANSPARENT);
-
         binding = ActivityMainBinding.inflate(getLayoutInflater());
+        shouldHideSystemUI();
         setContentView(binding.getRoot());
+
         try {
             GStreamer.init(this);
             nativeInit(this);
-            Log.i("Gstreamer Debug", nativeGetGStreamerInfo());
-            gstListPlugins();
+            shouldDebugPrint();
         } catch (Exception e) {
             Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
             finish();
@@ -77,7 +52,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         serverURLHandler = new ServerURLHandler(this);
-        Log.i(TAG, "onCreate ServerURL: "+ serverURLHandler.getServerUrl().toString()+" host:"+ serverURLHandler.getServerUrl().getHost());
+        Log.i(TAG, "Stored Server URL: "+ serverURLHandler.getServerUrl().toString()+" host:"+ serverURLHandler.getServerUrl().getHost());
 
         surfaceView = binding.gstreamerSurface;
         surfaceView.getHolder().addCallback(new SurfaceHolder.Callback() {
@@ -94,28 +69,41 @@ public class MainActivity extends AppCompatActivity {
             public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
             }
         });
-        assert binding.btnTest != null;
+
         binding.btnTest.setOnClickListener(v -> connectToStreamUi());
-        binding.btnConnect.setOnClickListener(v -> serverURLHandler.showServerUrlDialog(isUrlChanged -> {
-            if (isUrlChanged) {
-                //connectToStreamUi();
-                Log.i(TAG, "URL changed. ");
-            } else {
-                Log.i(TAG, "URL unchanged or canceled");
-            }
-        }));
+        executor = Executors.newSingleThreadExecutor();
         binding.btnPhoto.setOnClickListener(v -> {
-            //savePngFrame();
-            runFrameInference();
-            Log.i(TAG, "onCreate: saveFrame called");
+            executor.execute(() -> {
+                runFrameInference();
+                Log.i(TAG, "Frame inference called");
+            });
         });
         binding.btnRefresh.setOnClickListener(v -> playTestStream());
 
-        //connectToStreamUi();
         initStateTextAnimation();
-        nativeOpenCVInfo();
+        loadONNXModel();
+    }
+
+    private void loadONNXModel(){
         modelAssetPath = ModelHelper.copyModelFile(this, "yolov5su.onnx");
-        Log.i(TAG, "onCreate: modelAssetPath: "+modelAssetPath);
+        Log.i(TAG, "Model Path: "+modelAssetPath);
+    }
+
+    public void shouldDebugPrint(){
+        Log.i("Gstreamer Debug", nativeGetGStreamerInfo());
+        gstListPlugins();
+        nativeOpenCVInfo();
+    }
+
+    public void shouldHideSystemUI(){
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        );
+
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
     }
 
     public String getOnnxModelPath(){
@@ -130,7 +118,7 @@ public class MainActivity extends AppCompatActivity {
                 new Thread(() -> connectToStream(serverUri.getHost(), serverUri.getPort())).start();
             }
         } catch (Exception e) {
-            Log.e("connectToStreamUi", "connectToStreamUi: "+e.getMessage());
+            Log.e(TAG, "connectToStreamUi: "+e.getMessage());
         }
     }
 
@@ -138,7 +126,7 @@ public class MainActivity extends AppCompatActivity {
         if (hlsSegmentPath == null || hlsPlaylistPath == null) {
             File cacheDir = new File(getCacheDir(), "hls");
             if (!cacheDir.exists()) {
-                cacheDir.mkdirs();  // Ensure the directory exists
+                cacheDir.mkdirs();
             }
 
             hlsSegmentPath = new File(cacheDir, "segment_%05d.ts").getAbsolutePath();
@@ -166,13 +154,12 @@ public class MainActivity extends AppCompatActivity {
         serveHls();
     }
 
-    @SuppressLint("SetTextI18n")
     private void playTestStream() {
         initializeHLSPaths();
 
         String pipeline = String.format(
                 Locale.US,
-                "videotestsrc is-live=true ! videoscale ! video/x-raw,width=2960,height=1848 ! " +
+                "videotestsrc is-live=true ! videoscale ! video/x-raw,format=NV12,width=2960,height=1848 ! " +
                         "clockoverlay time-format=\"%%H:%%M:%%S\" font-desc=\"Sans, 48\" ! tee name=t " +
                         "t. ! queue ! glimagesink sync=false " +
                         "t. ! queue ! appsink name=app-sink sync=false " +
@@ -192,33 +179,28 @@ public class MainActivity extends AppCompatActivity {
     private void serveHls(){
         File hlsDir = new File(getCacheDir(), "hls");
         try {
-            HlsServer server = new HlsServer(8181, hlsDir);
+            HlsServer hlsServer = HlsServer.getInstance(8181, hlsDir);
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    @SuppressLint("SetTextI18n")
-    @SuppressWarnings("unused")
     public void stateUpdates(final String message) {
         Log.i("TAG", "GST State Update: " + message);
         switch (message) {
             case "connecting":
-                System.out.println("Connecting to network resource...");
                 runOnUiThread(() -> {
                     binding.connection.setText(".");
                     stateTextAnimator.start();
                 });
                 break;
             case "playing":
-                System.out.println("Playback started (Playing).");
                 runOnUiThread(() -> {
                     stopStateAnimation();
                     binding.connection.setText("LIVE");
                 });
                 break;
             case "error":
-                System.out.println("Playback error");
                 runOnUiThread(() -> {
                     stopStateAnimation();
                     binding.connection.setText("ERR");
@@ -226,11 +208,9 @@ public class MainActivity extends AppCompatActivity {
                 });
                 break;
             default:
-                // Handle other state updates.
-                System.out.println("State update received: " + message);
+                // State update received
                 break;
         }
-        //runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_SHORT).show());
     }
 
     private void initStateTextAnimation(){
@@ -287,4 +267,20 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         playPipeline();
     }
+
+    static {
+        System.loadLibrary("gstreamer_android");
+        System.loadLibrary("streamviewer");
+    }
+    private native String nativeGetGStreamerInfo();
+    private static native void setSurface(Surface surface);
+    private static native void nativeCleanup();
+    private static native void gstListPlugins();
+    private static native void setPipeline(String pipelineDesc);
+    private static native void pausePipeline();
+    private static native void playPipeline();
+    public native void nativeInit(MainActivity app);
+    private static native void nativeOpenCVInfo();
+    private native void saveRawFrame();
+    private native void runFrameInference();
 }
