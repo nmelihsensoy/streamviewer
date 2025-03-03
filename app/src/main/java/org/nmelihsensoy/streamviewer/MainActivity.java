@@ -70,6 +70,13 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        binding.btnConnect.setOnClickListener(v -> serverURLHandler.showServerUrlDialog(isUrlChanged -> {
+            if (isUrlChanged) {
+                Log.i(TAG, "URL changed. ");
+            } else {
+                Log.i(TAG, "URL unchanged or canceled");
+            }
+        }));
         binding.btnTest.setOnClickListener(v -> connectToStreamUi());
         executor = Executors.newSingleThreadExecutor();
         binding.btnPhoto.setOnClickListener(v -> {
