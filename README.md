@@ -11,6 +11,14 @@ StreamViewer is an Android application that allows users to view H.264 video str
 - **Load a Test Stream** – Quickly launch a built-in test stream.
 - **HLS Restreaming** – Restream the current source as an HLS stream.
 
+### Frame Capture
+
+When a frame is captured, it is saved in the following location on the device: `/sdcard/Download/image_<id>.png`
+
+### Inference Result
+
+Once YOLO inference is performed on a captured frame, the output tensor's dimensions are printed in Logcat.
+
 ### HLS Restreaming
 
 The restreamed HLS feed can be accessed via the following URL: `http://<server_ip>:8181/playlist.m3u8`
